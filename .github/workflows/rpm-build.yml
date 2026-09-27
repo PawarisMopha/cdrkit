@@ -1,0 +1,66 @@
+name: RPM Build
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: rockylinux:8
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install build dependencies
+      run: |
+        dnf groupinstall -y "Development Tools"
+        dnf install -y \
+          bzip2-devel \
+          cdparanoia-III-devel \
+          cmake \
+          libcap-devel \
+          libcdio-paranoia-devel \
+          libmagic-devel \
+          zlib-devel \
+          rpm-build \
+          rpmdevtools
+
+    - name: Set up RPM build environment
+      run: |
+        rpmdev-setuptree
+
+    - name: Copy spec file
+      run: |
+        cp cdrkit.spec ~/rpmbuild/SPECS/
+
+    - name: Download sources
+      run: |
+        cd ~/rpmbuild/SOURCES
+        spectool -g -R ../SPECS/cdrkit.spec || echo "spectool failed, trying wget"
+        wget -q http://cdrkit.org/releases/cdrkit-1.1.11.tar.gz || true
+
+    - name: Copy patches
+      run: |
+        cp *.patch ~/rpmbuild/SOURCES/ 2>/dev/null || true
+
+    - name: Build RPM package
+      run: |
+        cd ~/rpmbuild
+        rpmbuild -ba SPECS/cdrkit.spec
+
+    - name: Upload build artifacts
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: rpm-build-results
+        path: ~/rpmbuild/RPMS/
+        retention-days: 30
+
+    - name: Check build logs
+      if: failure()
+      run: |
+        cat ~/rpmbuild/BUILD/cdrkit-*/build.log 2>/dev/null || true
